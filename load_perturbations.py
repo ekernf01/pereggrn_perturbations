@@ -17,45 +17,59 @@ def set_data_path(path: str):
 
 def load_perturbation_metadata():
     try:
-        return pd.read_csv(os.path.join(os.environ["PERTURBATION_PATH"], "perturbations.csv"))
+        return pd.read_csv(os.path.join(get_data_path(), "perturbations.csv"))
     except KeyError as e:
-        raise(KeyError("Please set os.environ['PERTURBATION_PATH'] to point to the perturbation data collection."))
+        raise(KeyError("Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
 
-def load_perturbation(dataset_name: str, training_data_only: bool = False):
+def load_perturbation(dataset_name: str, is_train: bool = False):
     """Load a perturbation dataset. 
 
     Args:
         dataset_name (str): Taken from the metadata rownames.
-        training_data_only (bool, optional): Not implemented yet. Once implemented, if True, this will return separate training data with no perturbations (e.g. timecourse). Defaults to False.
+        is_train (bool, optional): If True, this will return separate training data with no 
+            perturbation (usually a timecourse). Defaults to False.
 
     Returns:
         anndata.AnnData: Perturbation data in a uniform format as described by `check_perturbation_dataset` or the README. 
     """
-    if training_data_only:
-        raise NotImplementedError("Sorry, training_data_only is not implemented yet.")
+    t = "train" if is_train else "test"
     try:
-        return sc.read_h5ad(os.path.join(os.environ["PERTURBATION_PATH"], dataset_name, "test.h5ad"))
+        return sc.read_h5ad(os.path.join(get_data_path(), dataset_name, f"{t}.h5ad"))
     except KeyError as e:
-        raise(KeyError("Please set os.environ['PERTURBATION_PATH'] to point to the perturbation data collection."))
+        raise(KeyError("Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
 
-def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = None):
+def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = None, is_train = False):
     """Enforce expectations on a perturbation dataset.
 
     Args:
         h5ad_file (str): Path to file containing perturbation data.
         ad (anndata.AnnData): AnnData object containing perturbation data.
+        is_train (bool): If True, this is treated as a training dataset, which is expected 
+            to contain time-series data and also extra metadata such as "timepoint".
     """
     if ad is None and dataset_name is None:
         raise ValueError("Provide exactly one of ad and dataset_name")
     if not ad is None and not dataset_name is None:
         raise ValueError("Provide exactly one of ad and dataset_name")
     if ad is None and dataset_name is not None:
-        ad = load_perturbation(dataset_name)
+        # This tiny bit of recursion helps us check a dataset with separate train and test folds. 
+        # The base-case: dataset_name = None and ad is not None.
+        check_perturbation_dataset(ad=load_perturbation(dataset_name, is_train = False), is_train = False)
+        try:
+            check_perturbation_dataset(ad=load_perturbation(dataset_name, is_train = True), is_train = True)
+        except FileNotFoundError:
+            pass
+        return
     
     # We will later select a variable number of genes based on this ranking. 
     assert "highly_variable_rank" in set(ad.var.columns), "Genes must be ranked in .var['highly_variable_rank']"
     assert all(~ad.var["highly_variable_rank"].isnull()), "Gene rankings should not be missing for any genes."
     assert all(ad.var["highly_variable_rank"]>=0), "Gene rankings must be positive integers"
+
+    # Time
+    if is_train:
+        assert "timepoint" in set(ad.obs.columns), "Time-series data must have a numeric 'timepoint' column"
+        assert "cell_type" in set(ad.obs.columns), "Time-series data must have a string 'cell_type' column"
 
     # Names of genes perturbed
     assert "perturbation" in set(ad.obs.columns), "No 'perturbation' column"
