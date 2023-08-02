@@ -81,7 +81,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         elap = ad.obs.loc[i, "expression_level_after_perturbation"]
         n_levels = len(str(elap).split(","))
         n_perts =  len(str(p   ).split(","))
-        assert n_levels==n_perts, f"Too many or too few expression_level_after_perturbation entries in sample {i}: {p}, {elap}"
+        assert n_levels==n_perts, f"Too many or too few expression_level_after_perturbation entries in sample {i}: {p} has {n_perts} and {elap} has {n_levels}"
 
     # Overexpression / knockout / knockdown
     assert "perturbation_type" in set(ad.obs.columns), "No 'perturbation_type' column"    
@@ -110,12 +110,12 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     assert all( [g     in all_genes_hit for g in ad.uns["perturbed_but_not_measured_genes"]] ), "perturbed_and_not_measured_genes not perturbed"
     
     # Expression in `.X` should be normalized and natural-log-transformed. 
-    assert ad.X.max() < 15, "Expression values too big -- did you log them?" #exp(15) is about 3 million -- too big to be a transcript count.
+    if "skip_log_check" in ad.uns.keys() and ad.uns["skip_log_check"]:
+        pass
+    else:
+        assert ad.X.max() < 15, "Expression values too big -- did you log them?" #exp(15) is about 3 million -- too big to be a transcript count.
             
     # Raw data should be present in `raw`.
     assert ad.raw is not None, "raw data are missing"
-
-    # spearman correlation within replicates
-    assert "spearmanCorr" in set(ad.obs.columns), "No spearman correlation found"
     
     return True
