@@ -77,8 +77,8 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     # Level of those genes after perturbation
     assert "expression_level_after_perturbation" in set(ad.obs.columns), "No 'expression_level_after_perturbation' column"
     for i in ad.obs.index:
-        p = ad.obs.loc[i, "perturbation"].values
-        elap = ad.obs.loc[i, "expression_level_after_perturbation"].values
+        p = ad.obs["perturbation"].astype(str)[i]
+        elap = ad.obs["expression_level_after_perturbation"].astype(str)[i]
         n_levels = len(str(elap).split(","))
         n_perts =  len(str(p   ).split(","))
         assert n_levels==n_perts, f"Too many or too few expression_level_after_perturbation entries in sample {i}: {p} has {n_perts} and {elap} has {n_levels}"
