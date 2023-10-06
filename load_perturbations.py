@@ -46,6 +46,11 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         ad (anndata.AnnData): AnnData object containing perturbation data.
         is_train (bool): If True, this is treated as a training dataset, which is expected 
             to contain time-series data and also extra metadata such as "timepoint".
+
+    Raises: 
+        ValueError or AssertionError for various problems with the input
+    Returns: 
+        True if the input data are correctly formatted
     """
     if ad is None and dataset_name is None:
         raise ValueError("Provide exactly one of ad and dataset_name")
@@ -94,7 +99,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     assert "is_control"   in set(ad.obs.columns), "No 'is_control' column"
     assert bool==ad.obs["is_control"].dtype, "non-boolean 'is_control' column"
     assert       ad.obs["is_control"].any(), "no controls found"
-    assert not   ad.obs["is_control"].all(), "only controls found"
+    assert is_train or not   ad.obs["is_control"].all(), "only controls found in test data"
 
     # if it says it's (not) measured, make sure it's (not) measured.
     assert all( [    g in ad.var_names for g in ad.uns["perturbed_and_measured_genes"]] ),     "perturbed_and_measured_genes"    " not all measured"
