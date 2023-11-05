@@ -36,7 +36,7 @@ def load_perturbation(dataset_name: str, is_train: bool = False):
     try:
         return sc.read_h5ad(os.path.join(get_data_path(), dataset_name, f"{t}.h5ad"))
     except KeyError as e:
-        raise(KeyError("Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
+        raise(KeyError("Dataset not found at this path. Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
 
 def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = None, is_train = False):
     """Enforce expectations on a perturbation dataset.
