@@ -5,8 +5,6 @@ Summary: Efficiently load and validate transcriptome profiles of genetic perturb
 Home-page: https://github.com/ekernf01/load_perturbations
 Author: Eric Kernfeld
 Author-email: eric.kern13@gmail.com
-License: UNKNOWN
-Platform: UNKNOWN
 Requires-Python: >=3.7
 Description-Content-Type: text/markdown
 
@@ -21,6 +19,4 @@ load_perturbations.load_perturbation_metadata()
 # Grab one
 nakatake_et_al = load_perturbations.load_perturbation("nakatake") 
 ```
-
-
 

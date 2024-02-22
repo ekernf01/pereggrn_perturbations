@@ -21,32 +21,34 @@ def load_perturbation_metadata():
     except KeyError as e:
         raise(KeyError("Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
 
-def load_perturbation(dataset_name: str, is_train: bool = False):
+def load_perturbation(dataset_name: str, is_timeseries: bool = False):
     """Load a perturbation dataset. 
 
     Args:
         dataset_name (str): Taken from the metadata rownames.
-        is_train (bool, optional): If True, this will return separate training data with no 
+        is_timeseries (bool, optional): If True, this will return separate training data with no 
             perturbation (usually a timecourse). Defaults to False.
 
     Returns:
         anndata.AnnData: Perturbation data in a uniform format as described by `check_perturbation_dataset` or the README. 
     """
-    t = "train" if is_train else "test"
+    t = "train" if is_timeseries else "test"
     try:
         return sc.read_h5ad(os.path.join(get_data_path(), dataset_name, f"{t}.h5ad"))
     except KeyError as e:
         raise(KeyError("Dataset not found at this path. Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
 
-def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = None, is_train = False, do_full = False):
+def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = None, is_timeseries = False, do_full = False, is_perturbation = True):
     """Enforce expectations on a perturbation dataset.
 
     Args:
         h5ad_file (str): Path to file containing perturbation data.
         ad (anndata.AnnData): AnnData object containing perturbation data.
         do_full (bool): If False (default), we only do a small sample of certain more expensive checks.
-        is_train (bool): If True, this is treated as a training dataset, which is expected 
-            to contain time-series data and also extra metadata such as "timepoint".
+        is_perturbation (bool): If True (default), this is treated as a perturbation dataset, which is expected to contain extra
+            metadata such as the perturbation type and which genes were perturbed.
+        is_timeseries (bool): If True, this is treated as a timeseries dataset, which is expected 
+            to contain extra metadata such as "timepoint". Default is False.
 
     Raises: 
         ValueError or AssertionError for various problems with the input
@@ -61,11 +63,11 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         # This tiny bit of recursion helps us check a dataset with separate train and test folds. 
         # The base-case: dataset_name = None and ad is not None.
         try:
-            assert all(load_perturbation(dataset_name, is_train = True).var_names == load_perturbation(dataset_name, is_train = False).var_names), "Gene names do not match between train and test data."
-            check_perturbation_dataset(ad=load_perturbation(dataset_name, is_train = True), is_train = True)
+            assert all(load_perturbation(dataset_name, is_timeseries = True).var_names == load_perturbation(dataset_name, is_timeseries = False).var_names), "Gene names do not match between train and test data."
+            check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = True), is_timeseries = True, is_perturbation = False)
         except FileNotFoundError:
             pass
-        check_perturbation_dataset(ad=load_perturbation(dataset_name, is_train = False), is_train = False)
+        check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = False), is_timeseries = False, is_perturbation = True)
         return
     
     # We will later select a variable number of genes based on this ranking. 
@@ -75,7 +77,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     assert all(ad.var["highly_variable_rank"]>=0), "Gene rankings must be positive integers"
 
     # Time   
-    if is_train:
+    if is_timeseries:
         print("Checking celltype and timepoint labels...", flush = True)
         assert "timepoint" in set(ad.obs.columns), "Time-series data must have a numeric 'timepoint' column"
         assert "cell_type" in set(ad.obs.columns), "Time-series data must have a string 'cell_type' column"
@@ -99,34 +101,35 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
                 if g in ad.var_names:
                     assert np.abs(float(x) - float(ad[i,g].X[0,0])) < 0.0001, f"For observation {i}, post-perturbation expression is given in .obs as {x} but the value in .X is {ad[i,g].X[0,0]}."
 
-    # Overexpression / knockout / knockdown
-    if not is_train:
+    # Boolean column is_control with both T and F
+    print("Checking control labels...", flush = True)
+    assert "is_control"   in set(ad.obs.columns), "No 'is_control' column"
+    assert bool==ad.obs["is_control"].dtype, "non-boolean 'is_control' column"
+    assert       ad.obs["is_control"].any(), "no controls found"
+
+    if is_perturbation:
+        # Overexpression / knockout / knockdown
         assert "perturbation_type" in set(ad.obs.columns), "No 'perturbation_type' column"    
         assert all(
             [pt in {"overexpression", "knockout", "knockdown"} 
             for pt in ad.obs["perturbation_type"]]
         ),  "Invalid 'perturbation_type' column"
 
-    # Boolean column is_control with both T and F
-    print("Checking control labels...", flush = True)
-    assert "is_control"   in set(ad.obs.columns), "No 'is_control' column"
-    assert bool==ad.obs["is_control"].dtype, "non-boolean 'is_control' column"
-    assert       ad.obs["is_control"].any(), "no controls found"
-    assert is_train or not   ad.obs["is_control"].all(), "only controls found in test data"
+        assert not ad.obs["is_control"].all(), "only controls found in test data"
 
-    # if it says it's (not) measured, make sure it's (not) measured.
-    print("Checking which genes are measured...", flush = True)
-    assert is_train or all( [    g in ad.var_names for g in ad.uns["perturbed_and_measured_genes"]] ),     "perturbed_and_measured_genes"    " not all measured"
-    assert is_train or all( [not g in ad.var_names for g in ad.uns["perturbed_but_not_measured_genes"]] ), "perturbed_and_not_measured_genes sometimes measured"
+        # if it says it's (not) measured, make sure it's (not) measured.
+        print("Checking which genes are measured...", flush = True)
+        assert all( [    g in ad.var_names for g in ad.uns["perturbed_and_measured_genes"]] ),     "perturbed_and_measured_genes"    " not all measured"
+        assert all( [not g in ad.var_names for g in ad.uns["perturbed_but_not_measured_genes"]] ), "perturbed_and_not_measured_genes sometimes measured"
     
-    # If it says it's perturbed, make sure it's perturbed. 
-    has_multiple_genes_hit = "perturbations_overlap" in ad.uns.keys() and ad.uns["perturbations_overlap"]
-    if has_multiple_genes_hit:
-        all_genes_hit = set.union(*[set(p.split(",")) for p in ad.obs["perturbation"]])      
-    else:
-        all_genes_hit = set(ad.obs["perturbation"]) 
-    assert is_train or all( [g     in all_genes_hit for g in ad.uns["perturbed_and_measured_genes"]] ),     "perturbed_and_measured_genes"  " not perturbed"
-    assert is_train or all( [g     in all_genes_hit for g in ad.uns["perturbed_but_not_measured_genes"]] ), "perturbed_and_not_measured_genes not perturbed"
+        # If it says it's perturbed, make sure it's perturbed. 
+        has_multiple_genes_hit = "perturbations_overlap" in ad.uns.keys() and ad.uns["perturbations_overlap"]
+        if has_multiple_genes_hit:
+            all_genes_hit = set.union(*[set(p.split(",")) for p in ad.obs["perturbation"]])      
+        else:
+            all_genes_hit = set(ad.obs["perturbation"]) 
+        assert all( [g     in all_genes_hit for g in ad.uns["perturbed_and_measured_genes"]] ),     "perturbed_and_measured_genes"  " not perturbed"
+        assert all( [g     in all_genes_hit for g in ad.uns["perturbed_but_not_measured_genes"]] ), "perturbed_and_not_measured_genes not perturbed"
     
     # Expression in `.X` should be normalized and natural-log-transformed. 
     print("Checking for log-transform and raw data...", flush = True)
