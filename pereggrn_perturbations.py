@@ -60,14 +60,17 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     if not ad is None and not dataset_name is None:
         raise ValueError("Provide exactly one of ad and dataset_name")
     if ad is None and dataset_name is not None:
-        # This tiny bit of recursion helps us check a dataset with separate train and test folds. 
-        # The base-case: dataset_name = None and ad is not None.
+        # A tiny bit of recursion helps us check a dataset with separate train and test folds. 
+        # The base-case: AnnData input.
         try:
+            # Look for separate train and test. Ensure the gene match. 
             assert all(load_perturbation(dataset_name, is_timeseries = True).var_names == load_perturbation(dataset_name, is_timeseries = False).var_names), "Gene names do not match between train and test data."
+            # Ensure that both datasets have timeseries info. 
             check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = True), is_timeseries = True, is_perturbation = False)
+            check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = False), is_timeseries = True, is_perturbation = True)
         except FileNotFoundError:
-            pass
-        check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = False), is_timeseries = False, is_perturbation = True)
+            # It's allowed to have only perturbation data.
+            check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = False), is_timeseries = False, is_perturbation = True)
         return
     
     # We will later select a variable number of genes based on this ranking. 

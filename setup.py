@@ -5,7 +5,7 @@ with open('README.md', 'r', encoding='utf-8') as fh:
 	long_description = fh.read()
 
 setup(
-    name='load_perturbations',
+    name='pereggrn_perturbations',
     version='0.0.1',
     description='Efficiently load and validate transcriptome profiles of genetic perturbations',
     long_description=long_description,
@@ -20,5 +20,5 @@ setup(
         "anndata",
     ],
     python_requires=">=3.7", 
-    url='https://github.com/ekernf01/load_perturbations',
+    url='https://github.com/ekernf01/pereggrn_perturbations',
 )

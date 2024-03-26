@@ -1,7 +1,0 @@
-README.md
-setup.py
-load_perturbations.egg-info/PKG-INFO
-load_perturbations.egg-info/SOURCES.txt
-load_perturbations.egg-info/dependency_links.txt
-load_perturbations.egg-info/requires.txt
-load_perturbations.egg-info/top_level.txt
