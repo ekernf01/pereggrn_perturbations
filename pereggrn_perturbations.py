@@ -24,12 +24,25 @@ import scanpy as sc  # Import the scanpy library for analyzing single-cell seque
 import anndata       # Import the anndata library to handle annotated data matrices in biology
 import numpy as np   # Import the numpy library for numerical operations
 
-# Function to retrieve the path to the perturbation data from an environment variable
 def get_data_path():
+    """
+    Retrieve the path to the perturbation data from an environment variable.
+
+    Returns:
+        str: The path stored in the 'PERTURBATION_PATH' environment variable.
+    """
     return os.environ['PERTURBATION_PATH'] # Return the path stored in the 'PERTURBATION_PATH' environment variable
 
-# Function to set the path for perturbation data in an environment variable and check for the existence of required files
 def set_data_path(path: str):
+    """
+    Set the path for perturbation data in an environment variable and check for the existence of required files.
+
+    Args:
+        path (str): Path to the directory containing perturbation datasets.
+
+    Raises:
+        FileNotFoundError: If the required files are not found at the specified path.
+    """
     # Check if the 'perturbations.csv' file exists at the specified path
     if not os.path.isfile(os.path.join(path, "perturbations.csv")): 
         raise FileNotFoundError("perturbations.csv should be a file in the folder whose name is provided to this function.")
@@ -39,8 +52,16 @@ def set_data_path(path: str):
     os.environ['PERTURBATION_PATH'] = path # Set the 'PERTURBATION_PATH' environment variable to the validated path
     return
 
-# Function to load metadata about perturbations from a CSV file at the designated path
 def load_perturbation_metadata():
+    """
+    Load metadata about perturbations from a CSV file at the designated path.
+
+    Returns:
+        pandas.DataFrame: DataFrame containing perturbation metadata.
+
+    Raises:
+        KeyError: If the required environment variable is not set.
+    """
     # Attempt to load and return the CSV file containing perturbation metadata
     try:
         return pd.read_csv(os.path.join(get_data_path(), "perturbations.csv"))
@@ -48,17 +69,19 @@ def load_perturbation_metadata():
     except KeyError as e:
         raise(KeyError("Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
 
-# Function to load a specific perturbation dataset from an AnnData file. It handles time series data separately if specified
 def load_perturbation(dataset_name: str, is_timeseries: bool = False):
-    """Load a perturbation dataset. 
+    """
+    Load a perturbation dataset from an AnnData file.
 
     Args:
-        dataset_name (str): Taken from the metadata rownames.
-        is_timeseries (bool, optional): If True, this will return separate training data with no 
-            perturbation (usually a timecourse). Defaults to False.
+        dataset_name (str): Name of the dataset, taken from the metadata row names.
+        is_timeseries (bool, optional): If True, loads the training data without perturbation (usually a timecourse). Defaults to False.
 
     Returns:
-        anndata.AnnData: Perturbation data in a uniform format as described by `check_perturbation_dataset` or the README. 
+        anndata.AnnData: Perturbation data in a uniform format.
+
+    Raises:
+        KeyError: If the dataset cannot be found at the specified path.
     """
     t = "train" if is_timeseries else "test" # Determine the dataset type based on whether it is part of a time series
     # Attempt to load and return the AnnData file for the specified dataset
@@ -70,21 +93,22 @@ def load_perturbation(dataset_name: str, is_timeseries: bool = False):
 
 # Function to validate the format and integrity of a loaded perturbation dataset
 def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = None, is_timeseries = False, do_full = False, is_perturbation = True):
-    """Enforce expectations on a perturbation dataset.
+    """
+    Validate the format and integrity of a loaded perturbation dataset.
 
     Args:
-        h5ad_file (str): Path to file containing perturbation data.
-        ad (anndata.AnnData): AnnData object containing perturbation data.
-        do_full (bool): If False (default), we only do a small sample of certain more expensive checks.
-        is_perturbation (bool): If True (default), this is treated as a perturbation dataset, which is expected to contain extra
-            metadata such as the perturbation type and which genes were perturbed.
-        is_timeseries (bool): If True, this is treated as a timeseries dataset, which is expected 
-            to contain extra metadata such as "timepoint". Default is False.
+        dataset_name (str, optional): Name of the dataset. Provide exactly one of `dataset_name` or `ad`.
+        ad (anndata.AnnData, optional): AnnData object containing perturbation data. Provide exactly one of `dataset_name` or `ad`.
+        is_timeseries (bool, optional): If True, performs checks specific to time series data. Defaults to False.
+        do_full (bool, optional): If True, performs a full validation, including more expensive checks. Defaults to False.
+        is_perturbation (bool, optional): If True, treats the data as a perturbation dataset with additional metadata. Defaults to True.
 
-    Raises: 
-        ValueError or AssertionError for various problems with the input
-    Returns: 
-        True if the input data are correctly formatted
+    Returns:
+        bool: True if the input data are correctly formatted.
+
+    Raises:
+        ValueError: If both or neither `dataset_name` and `ad` are provided.
+        AssertionError: If various expected conditions are not met.
     """
     # Ensure that exactly one of 'ad' or 'dataset_name' is provided
     if ad is None and dataset_name is None:
