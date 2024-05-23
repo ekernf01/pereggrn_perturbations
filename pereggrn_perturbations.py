@@ -97,12 +97,11 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     Validate the format and integrity of a loaded perturbation dataset.
 
     Args:
-        dataset_name (str, optional): Name of the dataset. Provide exactly one of `dataset_name` or `ad`.
-        ad (anndata.AnnData, optional): AnnData object containing perturbation data. Provide exactly one of `dataset_name` or `ad`.
-        is_timeseries (bool, optional): If True, performs checks specific to time series data. Defaults to False.
-        do_full (bool, optional): If True, performs a full validation, including more expensive checks. Defaults to False.
+        dataset_name (str, optional): Name of the dataset. Provide exactly one of `dataset_name` or `ad`. This specifies the dataset to be checked.
+        ad (anndata.AnnData, optional): AnnData object containing perturbation data. Provide exactly one of `dataset_name` or `ad`. This specifies the dataset to be checked.
+        is_timeseries (bool, optional): If True, performs checks specific to time-series data. Defaults to False.
+        do_full (bool, optional): If True, performs a full validation, including more time-consuming checks. Defaults to False.
         is_perturbation (bool, optional): If True, treats the data as a perturbation dataset with additional metadata. Defaults to True.
-
     Returns:
         bool: True if the input data are correctly formatted.
 
