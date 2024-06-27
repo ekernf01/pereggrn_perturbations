@@ -158,7 +158,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         # Check that the number of perturbations matches the number of reported expression levels
         assert n_levels==n_perts, f"Too many or too few expression_level_after_perturbation entries in sample {i}: {p} has {n_perts} and {elap} has {n_levels}"
         # Further validate expression levels for non-knockout perturbations if full check is enabled or within the first 1000 iterations.
-        if (ad.obs.loc[i, "perturbation_type"] != "knockout") and (do_full or iter < 1000):
+        if ~ad.obs.loc[i, "is_control"] and (ad.obs.loc[i, "perturbation_type"] != "knockout") and (do_full or iter < 1000):
             for x,g in zip(str(elap).split(","), str(p   ).split(",")):
                 if g in ad.var_names:
                     # Check that the reported post-perturbation expression closely matches the data in the matrix
