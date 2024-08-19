@@ -69,13 +69,14 @@ def load_perturbation_metadata():
     except KeyError as e:
         raise(KeyError("Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
 
-def load_perturbation(dataset_name: str, is_timeseries: bool = False):
+def load_perturbation(dataset_name: str, is_timeseries: bool = False, is_screen: bool = False):
     """
     Load a perturbation dataset from an AnnData file.
 
     Args:
         dataset_name (str): Name of the dataset, taken from the metadata row names.
-        is_timeseries (bool, optional): If True, loads the training data without perturbation (usually a timecourse). Defaults to False.
+        is_timeseries (bool, optional): If True, loads the training data without perturbation (usually a timecourse). Defaults to False. Ignored if is_screen is True.
+        is_screen (bool, optional): If True, loads CRISPR screen or literature review data.
 
     Returns:
         anndata.AnnData: Perturbation data in a uniform format.
@@ -83,13 +84,16 @@ def load_perturbation(dataset_name: str, is_timeseries: bool = False):
     Raises:
         KeyError: If the dataset cannot be found at the specified path.
     """
-    t = "train" if is_timeseries else "test" # Determine the dataset type based on whether it is part of a time series
-    # Attempt to load and return the AnnData file for the specified dataset
     try:
-        return sc.read_h5ad(os.path.join(get_data_path(), dataset_name, f"{t}.h5ad"))
-    # Raise a KeyError if the dataset cannot be found at the specified path
+        if is_screen:
+            return  pd.read_csv(os.path.join(get_data_path(), dataset_name, "screen.csv"))
+        else:
+            t = "train" if is_timeseries else "test" # Determine the dataset type based on whether it is part of a time series
+            return sc.read_h5ad(os.path.join(get_data_path(), dataset_name, f"{t}.h5ad"))
     except KeyError as e:
-        raise(KeyError("Dataset not found at this path. Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection."))
+        raise(FileNotFoundError(f"Could not find data at this path. Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection. Error was {e}."))
+    except FileNotFoundError as e:
+        raise(FileNotFoundError(f"Could not find data at this path. Before using the data you must call set_data_path('path/to/collection') to point to the perturbation data collection. Error was {e}."))
 
 # Function to validate the format and integrity of a loaded perturbation dataset
 def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = None, is_timeseries = False, do_full = False, is_perturbation = True):
@@ -100,7 +104,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         dataset_name (str, optional): Name of the dataset. Provide exactly one of `dataset_name` or `ad`. This specifies the dataset to be checked.
         ad (anndata.AnnData, optional): AnnData object containing perturbation data. Provide exactly one of `dataset_name` or `ad`. This specifies the dataset to be checked.
         is_timeseries (bool, optional): If True, performs checks specific to time-series data. Defaults to False.
-        do_full (bool, optional): If True, performs a full validation, including more time-consuming checks. Defaults to False.
+        do_full (bool, optional): If True, performs a full validation, including more time-consuming checks. Defaults to False. This mode is faster but may miss some detailed issues.
         is_perturbation (bool, optional): If True, treats the data as a perturbation dataset with additional metadata. Defaults to True.
     Returns:
         bool: True if the input data are correctly formatted.
@@ -114,17 +118,15 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         raise ValueError("Provide exactly one of ad and dataset_name")
     if not ad is None and not dataset_name is None:
         raise ValueError("Provide exactly one of ad and dataset_name")
-    if ad is None and dataset_name is not None: # QUESTION: What if there's ad but no dataset_name?
+    if ad is None and dataset_name is not None: 
         # A tiny bit of recursion helps us check a dataset with separate train and test folds. 
         # The base-case: AnnData input.
         try:
-            # Assert gene names are consistent between training and test data.
             assert all(load_perturbation(dataset_name, is_timeseries = True).var_names == load_perturbation(dataset_name, is_timeseries = False).var_names), "Gene names do not match between train and test data."
-            # Ensure that both datasets have timeseries info using recursion
             check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = True), is_timeseries = True, is_perturbation = False)
             check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = False), is_timeseries = True, is_perturbation = True)
         except FileNotFoundError:
-            # It's allowed to have only perturbation data. If only test data is found, check its validity.
+            # If only test data is found, check its validity. It's allowed to lack timeseries metadata. 
             check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = False), is_timeseries = False, is_perturbation = True)
         return
     
@@ -136,7 +138,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     assert all(ad.var["highly_variable_rank"]>=0), "Gene rankings must be positive integers"
 
     # Time   
-    if is_timeseries: # Additional checks if the dataset is a time series
+    if is_timeseries: 
         print("Checking celltype and timepoint labels...", flush = True)
         assert "timepoint" in set(ad.obs.columns), "Time-series data must have a numeric 'timepoint' column"
         assert "cell_type" in set(ad.obs.columns), "Time-series data must have a string 'cell_type' column"
@@ -149,26 +151,23 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     # Level of those genes after perturbation
     assert "expression_level_after_perturbation" in set(ad.obs.columns), "No 'expression_level_after_perturbation' column"
     iter = 0
-    for i in ad.obs.index: # Iterating through the index of observations in the AnnData object
+    for i in ad.obs.index: 
         iter = iter + 1
-        p = ad.obs.loc[i, "perturbation"] # Retrieve perturbation details for the current observation
-        elap = ad.obs.loc[i, "expression_level_after_perturbation"] # Retrieve expression levels after perturbation
-        n_levels = len(str(elap).split(",")) # Count the number of expression levels reported
-        n_perts =  len(str(p   ).split(",")) # Count the number of perturbations applied
-        # Check that the number of perturbations matches the number of reported expression levels
+        p = ad.obs.loc[i, "perturbation"] 
+        elap = ad.obs.loc[i, "expression_level_after_perturbation"] 
+        n_levels = len(str(elap).split(",")) 
+        n_perts =  len(str(p   ).split(",")) 
         assert n_levels==n_perts, f"Too many or too few expression_level_after_perturbation entries in sample {i}: {p} has {n_perts} and {elap} has {n_levels}"
-        # Further validate expression levels for non-knockout perturbations if full check is enabled or within the first 1000 iterations.
+        # This check takes a long time, so by default we will apply it only to the first 1000 samples.
         if ~ad.obs.loc[i, "is_control"] and (ad.obs.loc[i, "perturbation_type"] != "knockout") and (do_full or iter < 1000):
             for x,g in zip(str(elap).split(","), str(p   ).split(",")):
                 if g in ad.var_names:
-                    # Check that the reported post-perturbation expression closely matches the data in the matrix
-                    assert np.abs(float(x) - float(ad[i,g].X[0,0])) < 0.0001, f"For observation {i}, post-perturbation expression is given in .obs as {x} but the value in .X is {ad[i,g].X[0,0]}."
+                    assert np.isnan(float(x)) or np.abs(float(x) - float(ad[i,g].X[0,0])) < 0.0001, f"For observation {i}, post-perturbation expression is given in .obs as {x} but the value in .X is {ad[i,g].X[0,0]}."
 
-    # Check if the boolean control status ("is_control") is correctly labeled
     print("Checking control labels...", flush = True)
-    assert "is_control"   in set(ad.obs.columns), "No 'is_control' column" # Ensure 'is_control' column exists
-    assert bool==ad.obs["is_control"].dtype, "non-boolean 'is_control' column" # Ensure it's a boolean type
-    assert       ad.obs["is_control"].any(), "no controls found" # Ensure there is at least one control sample
+    assert "is_control"   in set(ad.obs.columns), "No 'is_control' column" 
+    assert bool==ad.obs["is_control"].dtype, "non-boolean 'is_control' column"
+    assert       ad.obs["is_control"].any(), "no controls found" 
 
     # Validate perturbation types
     if is_perturbation:
@@ -182,7 +181,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         assert not ad.obs["is_control"].all(), "only controls found in test data"
 
         # if it says it's (not) measured, make sure it's (not) measured.
-        print("Checking which genes are measured...", flush = True) # Check gene measurement status
+        print("Checking which genes are measured...", flush = True) 
         assert all( [    g in ad.var_names for g in ad.uns["perturbed_and_measured_genes"]] ),     "perturbed_and_measured_genes"    " not all measured"
         assert all( [not g in ad.var_names for g in ad.uns["perturbed_but_not_measured_genes"]] ), "perturbed_and_not_measured_genes sometimes measured"
     
@@ -201,8 +200,7 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         pass
     else:
         assert ad.X.max() < 15, "Expression values too big -- did you log them?" #exp(15) is about 3 million -- too big to be a transcript count.
-            
     # Raw data should be present in `raw`.
     assert ad.raw is not None, "raw data are missing"
     print("... done.")
-    return True # Indicate that all checks passed
+    return True 
