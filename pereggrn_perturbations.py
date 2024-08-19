@@ -1,23 +1,3 @@
-"""
-This module validates the format of perturbation datasets by doing the following:
-
-- Setting and retrieving paths for perturbation data via environment variables
-- Loading perturbation datasets and their metadata from specified directories
-- Validating the integrity and format of perturbation data using custom criteria, 
-    such as checking the presence and format of required files, ensuring consistency 
-    between datasets, and confirming the correctness of dataset contents.
-
-The module relies on the pandas, scanpy, anndata, numpy, and os libraries to perform these tasks. 
-It is designed to work with specific data structures expected in biological datasets, particularly those involving gene perturbations.
-
-Usage:
-- Before loading or validating datasets, set the data path using `set_data_path()`
-- Load dataset metadata with `load_perturbation_metadata()`
-- Validate datasets using `check_perturbation_dataset()` to ensure they meet expected formats and criteria
-
-Exceptions are raised for missing files, incorrect paths, or data inconsistencies, aiding in troubleshooting and ensuring data reliability.
-"""
-
 import os            # Import the os module to interact with the operating system
 import pandas as pd  # Import the pandas library for data manipulation and analysis
 import scanpy as sc  # Import the scanpy library for analyzing single-cell sequencing data
@@ -123,6 +103,14 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         # The base-case: AnnData input.
         try:
             assert all(load_perturbation(dataset_name, is_timeseries = True).var_names == load_perturbation(dataset_name, is_timeseries = False).var_names), "Gene names do not match between train and test data."
+            try:
+                print("Checking FACS-based CRISPR screen data...", flush = True)
+                screen = load_perturbation(dataset_name, is_screen = True)
+                assert screen.columns[0] == "perturbation", "If present, FACS-based CRISPR screen data must have a 'perturbation' column as the first column."
+                assert len(set(screen["perturbation"]).intersection(load_perturbation(dataset_name, is_timeseries = False).var_names)) > 10, "If present, CRISPR screen data must have at least 10 genes in common with the test data feature set."
+            except FileNotFoundError:
+                print("...no FACS-based CRISPR screen data found, which is fine.")
+                screen = None
             check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = True), is_timeseries = True, is_perturbation = False)
             check_perturbation_dataset(ad=load_perturbation(dataset_name, is_timeseries = False), is_timeseries = True, is_perturbation = True)
         except FileNotFoundError:
