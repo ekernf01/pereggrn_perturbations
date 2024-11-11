@@ -102,7 +102,8 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
         # A tiny bit of recursion helps us check a dataset with separate train and test folds. 
         # The base-case: AnnData input.
         try:
-            assert all(load_perturbation(dataset_name, is_timeseries = True).var_names == load_perturbation(dataset_name, is_timeseries = False).var_names), "Gene names do not match between train and test data."
+            assert all(load_perturbation(dataset_name, is_timeseries = True).var_names == 
+                       load_perturbation(dataset_name, is_timeseries = False).var_names), "Gene names do not match between train and test data."
             try:
                 print("Checking FACS-based CRISPR screen data...", flush = True)
                 screen = load_perturbation(dataset_name, is_screen = True)
@@ -192,3 +193,75 @@ def check_perturbation_dataset(dataset_name: str = None, ad: anndata.AnnData = N
     assert ad.raw is not None, "raw data are missing"
     print("... done.")
     return True 
+
+
+# Requirements from https://github.com/openproblems-bio/task_perturbation_prediction
+#
+# AnnData object
+#  obs: 'dose_uM', 'timepoint_hr', 'raw_cell_id', 'hashtag_id', 'well', 'container_format', 'row', 'col', 'plate_name', 'cell_id', 'cell_type', 'split', 'donor_id', 'sm_name'
+#  obsm: 'HTO_clr', 'X_pca', 'X_umap', 'protein_counts'
+#  layers: 'counts'
+#
+# | Slot                      | Type      | Description                                    |
+# |:--------------------------|:----------|:-----------------------------------------------|
+# | `obs["dose_uM"]`          | `integer` | Dose in micromolar.                            |
+# | `obs["timepoint_hr"]`     | `float`   | Time point measured in hours.                  |
+# | `obs["raw_cell_id"]`      | `string`  | Original cell identifier.                      |
+# | `obs["hashtag_id"]`       | `string`  | Identifier for hashtag oligo.                  |
+# | `obs["well"]`             | `string`  | Well location in the plate.                    |
+# | `obs["container_format"]` | `string`  | Format of the container (e.g., 96-well plate). |
+# | `obs["row"]`              | `string`  | Row in the plate.                              |
+# | `obs["col"]`              | `integer` | Column in the plate.                           |
+# | `obs["plate_name"]`       | `string`  | Name of the plate.                             |
+# | `obs["cell_id"]`          | `string`  | Unique cell identifier.                        |
+# | `obs["cell_type"]`        | `string`  | Type of cell (e.g., B cells, T cells CD4+).    |
+# | `obs["split"]`            | `string`  | Dataset split type (e.g., control, treated).   |
+# | `obs["donor_id"]`         | `string`  | Identifier for the donor.                      |
+# | `obs["sm_name"]`          | `string`  | Name of the small molecule used for treatment. |
+# | `obsm["HTO_clr"]`         | `matrix`  | Corrected counts for hashing tags.             |
+# | `obsm["X_pca"]`           | `matrix`  | Principal component analysis results.          |
+# | `obsm["X_umap"]`          | `matrix`  | UMAP dimensionality reduction results.         |
+# | `obsm["protein_counts"]`  | `matrix`  | Count data for proteins.                       |
+# | `layers["counts"]`        | `matrix`  | Raw count data for each gene across cells.     |
+
+def exportToOpenProblemsFormat(dataset_name: str):
+    ad = load_perturbation(dataset_name)
+    metadata = load_perturbation_metadata().query("name==@dataset_name")
+    ad.layers["counts"] = ad.raw.X.copy()
+    del ad.X
+    del ad.raw
+    ad.obs["dose_uM"] = np.nan
+    for i in ad.obs_names:
+        dose = ""
+        for gene in ad.obs.loc[i, "perturbation"].split(","):
+            try:
+                dose_this_gene = ad[i, gene].layers["counts"]
+            except KeyError:
+                dose_this_gene = np.nan
+            dose = dose + "," + str(dose_this_gene)
+        ad.obs.loc[i, "dose_uM"] = dose
+    if metadata["type"].values[0]=="timeseries":
+        raise ValueError("Sorry -- timeseries data export is not supported yet because the time labels are too irregular.")
+    else:
+        ad.obs["timepoint_hr"] = metadata["measured_at"].str.replace("days", "").replace(" ", "").astype(float)*24
+        try:
+            ad.obs["cell_type"] = metadata["cell_type"]
+        except KeyError:
+            print("No cell type information found -- you may need to fix it manually until we update the data on Zenodo.")
+    ad.obs["raw_cell_id"] = np.nan
+    ad.obs["hashtag_id"] = np.nan
+    ad.obs["well"] = np.nan
+    ad.obs["container_format"] = np.nan
+    ad.obs["row"] = np.nan
+    ad.obs["col"] = np.nan
+    ad.obs["plate_name"] = np.nan
+    ad.obs["cell_id"] = ad.obs.index
+    ad.obs["split"] = ["control" if is_control else "treated" for is_control in ad.obs["is_control"]]
+    try:
+        ad.obs["donor_id"] = ad.obs["donor"]
+    except KeyError:
+        ad.obs["donor_id"] = np.nan
+    ad.obs["sm_name"] = ad.obs["perturbation"]
+    assert "X_pca" in ad.obsm.keys(), "X_pca missing"
+    assert "X_umap" in ad.obsm.keys(), "X_umap missing"
+    return ad
